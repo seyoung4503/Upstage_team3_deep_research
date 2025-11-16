@@ -15,14 +15,11 @@ input through final report delivery.
 import os
 from langchain_core.messages import HumanMessage
 from langgraph.graph import StateGraph, START, END
-# from langchain_google_genai import ChatGoogleGenerativeAI
-API_KEY = os.getenv("UPSTAGE_API_KEY")
 
 from langchain_upstage import ChatUpstage
 
 from dotenv import load_dotenv
 load_dotenv()
-API_KEY = os.getenv("GOOGLE_API_KEY")
 
 from deep_research.utils import get_today_str
 from deep_research.prompts import final_report_generation_prompt
@@ -30,23 +27,38 @@ from deep_research.state_scope import AgentState, AgentInputState
 from deep_research.research_agent_scope import clarify_with_user, write_research_brief
 from deep_research.multi_agent_supervisor import supervisor_agent
 
+
+
+from pydantic import BaseModel, Field
+from typing import List, Optional
+
+# 1️⃣ 스키마 정의
+class Evidence(BaseModel):
+    source_title: str
+    url: str
+
+class InfluenceChain(BaseModel):
+    politician: str
+    policy: str
+    industry_or_sector: str
+    companies: List[str]
+    impact_description: str
+    evidence: List[Evidence]
+
+class InfluenceReport(BaseModel):
+    report_title: str
+    time_range: str
+    influence_chains: List[InfluenceChain]
+    notes: Optional[str] = ""
+
+
 # ===== Config =====
-
-from langchain.chat_models import init_chat_model
-# writer_model = init_chat_model(model="openai:gpt-4.1", max_tokens=32000) # model="anthropic:claude-sonnet-4-20250514", max_tokens=64000
-
-
-writer_model = ChatUpstage(api_key=os.getenv("UPSTAGE_API_KEY"), model="solar-pro2", temperature=0)
-# writer_model = ChatGoogleGenerativeAI(
-#     model="gemini-2.5-flash", 
-#     api_key = API_KEY,
-#     temperature=0,
-#     convert_system_message_to_human=True 
-# )
+writer_model = ChatUpstage(api_key=os.getenv("UPSTAGE_API_KEY"), model="solar-pro2", temperature=0).with_structured_output(InfluenceReport)
 
 # ===== FINAL REPORT GENERATION =====
 
 from deep_research.state_scope import AgentState
+
 
 async def final_report_generation(state: AgentState):
     """
@@ -68,9 +80,11 @@ async def final_report_generation(state: AgentState):
     final_report = await writer_model.ainvoke([HumanMessage(content=final_report_prompt)])
 
     return {
+        "final_report_json": final_report.model_dump(),
         "final_report": final_report.content, 
         "messages": ["Here is the final report: " + final_report.content],
     }
+
 
 # ===== GRAPH CONSTRUCTION =====
 # Build the overall workflow
