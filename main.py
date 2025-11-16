@@ -1,0 +1,45 @@
+import os
+import json
+import asyncio
+import uuid
+from fastapi import FastAPI, Request
+from dotenv import load_dotenv
+from langgraph.checkpoint.memory import InMemorySaver
+from langchain_core.messages import HumanMessage
+from deep_research.research_agent_full import deep_researcher_builder
+
+
+load_dotenv()
+
+app = FastAPI(title="Deep Research Server")
+
+
+checkpointer = InMemorySaver()
+full_agent = deep_researcher_builder.compile(checkpointer=checkpointer)
+
+async def run_agent(query: str):
+    """에이전트를 실행하고 결과(JSON) 반환"""
+    thread = {"configurable": {"thread_id": str(uuid.uuid4()), "recursion_limit": 10}}
+    result = await full_agent.ainvoke(
+        {"messages": [HumanMessage(content=query)]},
+        config=thread
+    )
+    data = result.get("final_report", {})
+    json_str = json.dumps(data, ensure_ascii=False, indent=2)
+    return json_str
+
+
+@app.post("/generate")
+async def generate_report(request: Request):
+    """POST /generate { "query": "도널드 트럼프" }"""
+    payload = await request.json()
+    query = payload.get("query", "")
+    if not query:
+        return {"error": "query field is required"}
+    result = await run_agent(query)
+    return json.loads(result)
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
