@@ -89,7 +89,8 @@ def tavily_search_multiple(
 
     return search_docs
 
-def summarize_webpage_content(webpage_content: str) -> str:
+# todo : 성능 테스트 필요
+def summarize_webpage_content(webpage_content: str) -> str: 
     """Summarize webpage content using the configured summarization model.
 
     Args:
@@ -98,29 +99,48 @@ def summarize_webpage_content(webpage_content: str) -> str:
     Returns:
         Formatted summary with key excerpts
     """
+    MAX_CHARS = 15000  
     try:
-        # Set up structured output model for summarization
-        structured_model = summarization_model.with_structured_output(Summary)
+        truncated = webpage_content[:MAX_CHARS]
 
-        # Generate summary
+        structured_model = summarization_model.with_structured_output(Summary)
         summary = structured_model.invoke([
             HumanMessage(content=summarize_webpage_prompt.format(
-                webpage_content=webpage_content, 
+                webpage_content=truncated,
                 date=get_today_str()
             ))
         ])
-
-        # Format summary with clear structure
         formatted_summary = (
             f"<summary>\n{summary.summary}\n</summary>\n\n"
             f"<key_excerpts>\n{summary.key_excerpts}\n</key_excerpts>"
         )
-
         return formatted_summary
-
     except Exception as e:
         print(f"Failed to summarize webpage: {str(e)}")
-        return webpage_content[:1000] + "..." if len(webpage_content) > 1000 else webpage_content
+        return webpage_content[:2000] + "..."
+    # try:
+    #     # Set up structured output model for summarization
+    #     structured_model = summarization_model.with_structured_output(Summary)
+
+    #     # Generate summary
+    #     summary = structured_model.invoke([
+    #         HumanMessage(content=summarize_webpage_prompt.format(
+    #             webpage_content=webpage_content, 
+    #             date=get_today_str()
+    #         ))
+    #     ])
+
+    #     # Format summary with clear structure
+    #     formatted_summary = (
+    #         f"<summary>\n{summary.summary}\n</summary>\n\n"
+    #         f"<key_excerpts>\n{summary.key_excerpts}\n</key_excerpts>"
+    #     )
+
+    #     return formatted_summary
+
+    # except Exception as e:
+    #     print(f"Failed to summarize webpage: {str(e)}")
+    #     return webpage_content[:1000] + "..." if len(webpage_content) > 1000 else webpage_content
 
 def deduplicate_search_results(search_results: List[dict]) -> dict:
     """Deduplicate search results by URL to avoid processing duplicate content.
@@ -212,7 +232,7 @@ def tavily_search(
         [query],  # Convert single query to list for the internal function
         max_results=max_results,
         topic=topic,
-        include_raw_content=True,
+        include_raw_content=False, # todo : html check
     )
 
     # Deduplicate results by URL to avoid processing duplicate content
