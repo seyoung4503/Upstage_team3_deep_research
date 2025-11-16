@@ -9,7 +9,10 @@ from pathlib import Path
 from datetime import datetime
 from typing_extensions import Annotated, List, Literal
 import os
-from langchain_google_genai import ChatGoogleGenerativeAI
+# from langchain_google_genai import ChatGoogleGenerativeAI
+API_KEY = os.getenv("UPSTAGE_API_KEY")
+
+from langchain_upstage import ChatUpstage
 from dotenv import load_dotenv
 load_dotenv()
 API_KEY = os.getenv("GOOGLE_API_KEY")
@@ -42,13 +45,14 @@ def get_current_dir() -> Path:
 
 # ===== CONFIGURATION =====
 
-summarization_model = ChatGoogleGenerativeAI(
-    model="gemini-2.5-flash", 
-    api_key = API_KEY,
-    temperature=0,
-    convert_system_message_to_human=True 
-)
+# summarization_model = ChatGoogleGenerativeAI(
+#     model="gemini-2.5-flash", 
+#     api_key = API_KEY,
+#     temperature=0,
+#     convert_system_message_to_human=True 
+# )
 
+summarization_model = ChatUpstage(api_key=os.getenv("UPSTAGE_API_KEY"), model="solar-pro2", temperature=0)
 
 tavily_client = TavilyClient()
 

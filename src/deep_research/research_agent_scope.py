@@ -12,7 +12,10 @@ import os
 from datetime import datetime
 from dotenv import load_dotenv
 from typing_extensions import Literal
-from langchain_google_genai import ChatGoogleGenerativeAI
+# from langchain_google_genai import ChatGoogleGenerativeAI
+API_KEY = os.getenv("UPSTAGE_API_KEY")
+
+from langchain_upstage import ChatUpstage
 
 from langchain.chat_models import init_chat_model
 from langchain_core.messages import HumanMessage, AIMessage, get_buffer_string
@@ -34,12 +37,14 @@ def get_today_str() -> str:
 # model = init_chat_model(model="openai:gpt-4.1", temperature=0.0)
 load_dotenv()
 API_KEY = os.getenv("GOOGLE_API_KEY")
-model = ChatGoogleGenerativeAI(
-    model="gemini-2.5-flash", 
-    api_key = API_KEY,
-    temperature=0,
-    convert_system_message_to_human=True 
-)
+
+model = ChatUpstage(api_key=os.getenv("UPSTAGE_API_KEY"), model="solar-pro2", temperature=0)
+# model = ChatGoogleGenerativeAI(
+#     model="gemini-2.5-flash", 
+#     api_key = API_KEY,
+#     temperature=0,
+#     convert_system_message_to_human=True 
+# )
 
 
 

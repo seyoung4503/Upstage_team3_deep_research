@@ -15,7 +15,11 @@ input through final report delivery.
 import os
 from langchain_core.messages import HumanMessage
 from langgraph.graph import StateGraph, START, END
-from langchain_google_genai import ChatGoogleGenerativeAI
+# from langchain_google_genai import ChatGoogleGenerativeAI
+API_KEY = os.getenv("UPSTAGE_API_KEY")
+
+from langchain_upstage import ChatUpstage
+
 from dotenv import load_dotenv
 load_dotenv()
 API_KEY = os.getenv("GOOGLE_API_KEY")
@@ -32,12 +36,13 @@ from langchain.chat_models import init_chat_model
 # writer_model = init_chat_model(model="openai:gpt-4.1", max_tokens=32000) # model="anthropic:claude-sonnet-4-20250514", max_tokens=64000
 
 
-writer_model = ChatGoogleGenerativeAI(
-    model="gemini-2.5-flash", 
-    api_key = API_KEY,
-    temperature=0,
-    convert_system_message_to_human=True 
-)
+writer_model = ChatUpstage(api_key=os.getenv("UPSTAGE_API_KEY"), model="solar-pro2", temperature=0)
+# writer_model = ChatGoogleGenerativeAI(
+#     model="gemini-2.5-flash", 
+#     api_key = API_KEY,
+#     temperature=0,
+#     convert_system_message_to_human=True 
+# )
 
 # ===== FINAL REPORT GENERATION =====
 
@@ -72,13 +77,14 @@ async def final_report_generation(state: AgentState):
 deep_researcher_builder = StateGraph(AgentState, input_schema=AgentInputState)
 
 # Add workflow nodes
-deep_researcher_builder.add_node("clarify_with_user", clarify_with_user)
+# deep_researcher_builder.add_node("clarify_with_user", clarify_with_user)
 deep_researcher_builder.add_node("write_research_brief", write_research_brief)
 deep_researcher_builder.add_node("supervisor_subgraph", supervisor_agent)
 deep_researcher_builder.add_node("final_report_generation", final_report_generation)
 
 # Add workflow edges
-deep_researcher_builder.add_edge(START, "clarify_with_user")
+# deep_researcher_builder.add_edge(START, "clarify_with_user")
+deep_researcher_builder.add_edge(START, "write_research_brief")
 deep_researcher_builder.add_edge("write_research_brief", "supervisor_subgraph")
 deep_researcher_builder.add_edge("supervisor_subgraph", "final_report_generation")
 deep_researcher_builder.add_edge("final_report_generation", END)

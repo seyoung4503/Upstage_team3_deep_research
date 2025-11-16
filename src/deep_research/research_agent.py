@@ -8,13 +8,16 @@ and synthesis to answer complex research questions.
 import os
 from pydantic import BaseModel, Field
 from typing_extensions import Literal
-from langchain_google_genai import ChatGoogleGenerativeAI
+# from langchain_google_genai import ChatGoogleGenerativeAI
+API_KEY = os.getenv("UPSTAGE_API_KEY")
+
+from langchain_upstage import ChatUpstage
 from langgraph.graph import StateGraph, START, END
 from langchain_core.messages import SystemMessage, HumanMessage, ToolMessage, filter_messages
 
 from dotenv import load_dotenv
 load_dotenv()
-API_KEY = os.getenv("GOOGLE_API_KEY")
+# API_KEY = os.getenv("GOOGLE_API_KEY")
 
 from deep_research.state_research import ResearcherState, ResearcherOutputState
 from deep_research.utils import tavily_search, get_today_str, think_tool
@@ -27,12 +30,13 @@ tools = [tavily_search, think_tool]
 tools_by_name = {tool.name: tool for tool in tools}
 
 # Initialize models
-model = ChatGoogleGenerativeAI(
-    model="gemini-2.5-flash", 
-    api_key = API_KEY,
-    temperature=0,
-    convert_system_message_to_human=True 
-)
+model = ChatUpstage(api_key=os.getenv("UPSTAGE_API_KEY"), model="solar-pro2", temperature=0)
+# model = ChatGoogleGenerativeAI(
+#     model="gemini-2.5-flash", 
+#     api_key = API_KEY,
+#     temperature=0,
+#     convert_system_message_to_human=True 
+# )
 model_with_tools = model.bind_tools(tools)
 compress_model = model
 
