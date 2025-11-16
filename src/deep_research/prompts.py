@@ -335,86 +335,72 @@ CRITICAL REQUIREMENTS:
 The cleaned findings will be used for final report generation and knowledge graph construction, so comprehensiveness and relational fidelity are critical."""
 
 
-final_report_generation_prompt = """Based on all the research conducted, create a comprehensive, well-structured answer to the overall research brief:
-<Research Brief>
+final_report_generation_prompt = """
+You are a research synthesis assistant.
+
+Based on the research brief and findings below, produce a **single JSON object only** — no explanations, no markdown headings, no commentary.
+
+---
+
+### <Research Brief>
 {research_brief}
 </Research Brief>
 
-CRITICAL: Make sure the answer is written in the same language as the human messages!
-For example, if the user's messages are in English, then MAKE SURE you write your response in English. If the user's messages are in Korean, then MAKE SURE you write your entire response in Korean.
-This is critical. The user will only understand the answer if it is written in the same language as their input message.
-
-Today's date is {date}.
-
-Here are the findings from the research that you conducted:
-<Findings>
+### <Findings>
 {findings}
 </Findings>
 
-Please create a detailed answer to the overall research brief that:
-1. Is well-organized with proper headings (# for title, ## for sections, ### for subsections)
-2. Includes specific facts and insights from the research
-3. References relevant sources using [Title](URL) format
-4. Provides a balanced, thorough analysis. Be as comprehensive as possible, and include all information that is relevant to the overall research question. People are using you for deep research and will expect detailed, comprehensive answers.
-5. Includes a "Sources" section at the end with all referenced links
-6. In this project, focus on clearly expressing **relationships** between political figures, policies, industries, and companies. Use structured language that can easily be mapped into a graph format.
-   - Example: "윤석열 → 법인세 인하 정책 → 금융주 상승" or "그린뉴딜 정책 → 재생에너지 산업 → 한화솔루션, 두산에너빌리티 수혜"
-7. When describing findings, explicitly highlight **influence, correlation, or impact chains** (e.g., “정책 발표 이후 기업 실적 개선”, “정책 방향 전환으로 산업 구조 변화”).
+Today's date: {date}
 
-You can structure your report in a number of different ways. Here are some examples:
+---
 
-To answer a question that asks you to compare two things, you might structure your report like this:
-1/ intro
-2/ overview of topic A
-3/ overview of topic B
-4/ comparison between A and B
-5/ conclusion
+### REQUIRED JSON OUTPUT SCHEMA
 
-To answer a question that asks you to return a list of things, you might only need a single section which is the entire list.
-1/ list of things or table of things
-Or, you could choose to make each item in the list a separate section in the report. When asked for lists, you don't need an introduction or conclusion.
-1/ item 1
-2/ item 2
-3/ item 3
+Output must be a **valid JSON object** (no markdown code fences, no comments, no text outside the object).  
+The JSON must conform exactly to the following structure:
 
-To answer a question that asks you to summarize a topic, give a report, or give an overview, you might structure your report like this:
-1/ overview of topic
-2/ concept 1
-3/ concept 2
-4/ concept 3
-5/ conclusion
+{
+  "report_title": "string",
+  "time_range": "string",
+  "influence_chains": [
+    {
+      "politician": "string",
+      "policy": "string",
+      "industry_or_sector": "string",
+      "companies": ["string", "string"],
+      "impact_description": "string",
+      "evidence": [
+        {
+          "source_title": "string",
+          "url": "string"
+        }
+      ]
+    }
+  ],
+  "notes": "Optional additional insights, caveats, or limitations."
+}
 
-If you think you can answer the question with a single section, you can do that too!
-1/ answer
+---
 
-REMEMBER: Section is a VERY fluid and loose concept. You can structure your report however you think is best, including in ways that are not listed above!
-Make sure that your sections are cohesive, and make sense for the reader.
+### RULES
+1. The output **must be strictly valid JSON**.  
+   - Do **not** include markdown code fences (```json ... ```).  
+   - Do **not** include natural language text or explanations.
+2. Each `influence_chains` entry must describe a single verified relationship between:
+   - `"politician"` → `"policy"` → `"industry_or_sector"` → `"companies"` → `"evidence"`.
+3. `"evidence"` should contain **source_title** and **url** from the research.
+4. `"impact_description"` should summarize how the policy influenced the companies or industry.
+5. `"report_title"` should be concise and descriptive (e.g., "문재인 정부의 정치·경제·기업 연결성 분석").
+6. `"time_range"` should match the research period (e.g., "2017–2022").
+7. `"notes"` can describe caveats, data limitations, or indirect inference.
 
-For each section of the report, do the following:
-- Use simple, clear language
-- Use ## for section title (Markdown format) for each section of the report
-- Do NOT ever refer to yourself as the writer of the report. This should be a professional report without any self-referential language. 
-- Do not say what you are doing in the report. Just write the report without any commentary from yourself.
-- Each section should be as long as necessary to deeply answer the question with the information you have gathered. It is expected that sections will be fairly long and verbose. You are writing a deep research report, and users will expect a thorough answer.
-- Use bullet points to list out information when appropriate, but by default, write in paragraph form.
+---
 
-REMEMBER:
-The brief and research may be in English, but you need to translate this information to the right language when writing the final answer.
-Make sure the final answer report is in the SAME language as the human messages in the message history.
-
-Format the report in clear markdown with proper structure and include source references where appropriate.
-
-<Citation Rules>
-- Assign each unique URL a single citation number in your text
-- End with ### Sources that lists each source with corresponding numbers
-- IMPORTANT: Number sources sequentially without gaps (1,2,3,4...) in the final list regardless of which sources you choose
-- Each source should be a separate line item in a list, so that in markdown it is rendered as a list.
-- Example format:
-  [1] Source Title: URL
-  [2] Source Title: URL
-- Citations are extremely important. Make sure to include these, and pay a lot of attention to getting these right. Users will often use these citations to look into more information.
-</Citation Rules>
+### OUTPUT REQUIREMENT
+Return **only the JSON object** and nothing else.
+If you cannot extract a particular field, leave it as an empty string ("").
 """
+
 
 
 BRIEF_CRITERIA_PROMPT = """
