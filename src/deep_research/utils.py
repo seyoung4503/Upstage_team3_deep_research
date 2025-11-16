@@ -9,13 +9,11 @@ from pathlib import Path
 from datetime import datetime
 from typing_extensions import Annotated, List, Literal
 import os
-# from langchain_google_genai import ChatGoogleGenerativeAI
-API_KEY = os.getenv("UPSTAGE_API_KEY")
 
 from langchain_upstage import ChatUpstage
 from dotenv import load_dotenv
 load_dotenv()
-API_KEY = os.getenv("GOOGLE_API_KEY")
+
 from langchain_core.messages import HumanMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool, InjectedToolArg

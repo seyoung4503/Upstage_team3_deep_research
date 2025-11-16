@@ -104,18 +104,18 @@ def write_research_brief(state: AgentState):
         "supervisor_messages": [HumanMessage(content=f"{response.research_brief}.")]
     }
 
-# ===== GRAPH CONSTRUCTION =====
+# # ===== GRAPH CONSTRUCTION =====
 
-# Build the scoping workflow
-deep_researcher_builder = StateGraph(AgentState, input_schema=AgentInputState)
+# # Build the scoping workflow
+# deep_researcher_builder = StateGraph(AgentState, input_schema=AgentInputState)
 
-# Add workflow nodes
-deep_researcher_builder.add_node("clarify_with_user", clarify_with_user)
-deep_researcher_builder.add_node("write_research_brief", write_research_brief)
+# # Add workflow nodes
+# deep_researcher_builder.add_node("clarify_with_user", clarify_with_user)
+# deep_researcher_builder.add_node("write_research_brief", write_research_brief)
 
-# Add workflow edges
-deep_researcher_builder.add_edge(START, "clarify_with_user")
-deep_researcher_builder.add_edge("write_research_brief", END)
+# # Add workflow edges
+# deep_researcher_builder.add_edge(START, "clarify_with_user")
+# deep_researcher_builder.add_edge("write_research_brief", END)
 
-# Compile the workflow
-scope_research = deep_researcher_builder.compile()
+# # Compile the workflow
+# scope_research = deep_researcher_builder.compile()

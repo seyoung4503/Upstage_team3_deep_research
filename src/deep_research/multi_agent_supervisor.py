@@ -16,8 +16,6 @@ from typing_extensions import Literal
 
 from dotenv import load_dotenv
 load_dotenv()
-# API_KEY = os.getenv("GOOGLE_API_KEY")
-API_KEY = os.getenv("UPSTAGE_API_KEY")
 
 from langchain_upstage import ChatUpstage
 
@@ -74,14 +72,7 @@ except ImportError:
 # ===== CONFIGURATION =====
 
 supervisor_tools = [ConductResearch, ResearchComplete, think_tool]
-# supervisor_model = init_chat_model(model="anthropic:claude-sonnet-4-20250514")
 supervisor_model = ChatUpstage(api_key=os.getenv("UPSTAGE_API_KEY"), model="solar-pro2", temperature=0)
-# supervisor_model = ChatGoogleGenerativeAI(
-#     model="gemini-2.5-flash", 
-#     api_key = API_KEY,
-#     temperature=0,
-#     convert_system_message_to_human=True 
-# )
 supervisor_model_with_tools = supervisor_model.bind_tools(supervisor_tools)
 
 # System constants
