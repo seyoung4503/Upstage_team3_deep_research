@@ -32,7 +32,6 @@ from deep_research.multi_agent_supervisor import supervisor_agent
 from pydantic import BaseModel, Field
 from typing import List, Optional
 
-# 1️⃣ 스키마 정의
 class Evidence(BaseModel):
     source_title: str
     url: str
@@ -79,10 +78,14 @@ async def final_report_generation(state: AgentState):
 
     final_report = await writer_model.ainvoke([HumanMessage(content=final_report_prompt)])
 
+    data = final_report.model_dump()
+    import json
+    # json_str = json.dumps(data, ensure_ascii=False, indent=2)
+
     return {
-        "final_report_json": final_report.model_dump(),
-        "final_report": final_report.content, 
-        "messages": ["Here is the final report: " + final_report.content],
+        "final_report": data,
+        # "final_report": final_report.content, 
+        # "messages": ["Here is the final report: " + final_report.content],
     }
 
 
