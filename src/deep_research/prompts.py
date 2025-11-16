@@ -359,26 +359,26 @@ Today's date: {date}
 Output must be a **valid JSON object** (no markdown code fences, no comments, no text outside the object).  
 The JSON must conform exactly to the following structure:
 
-{
+{{
   "report_title": "string",
   "time_range": "string",
   "influence_chains": [
-    {
+    {{
       "politician": "string",
       "policy": "string",
       "industry_or_sector": "string",
       "companies": ["string", "string"],
       "impact_description": "string",
       "evidence": [
-        {
+        {{
           "source_title": "string",
           "url": "string"
-        }
+        }}
       ]
-    }
+    }}
   ],
   "notes": "Optional additional insights, caveats, or limitations."
-}
+}}
 
 ---
 
