@@ -8,6 +8,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 from langchain_core.messages import HumanMessage
 from deep_research.research_agent_full import deep_researcher_builder
 from pydantic import BaseModel
+from fastapi import HTTPException
 
 load_dotenv()
 
@@ -34,10 +35,11 @@ async def run_agent(query: str):
 @app.post("/generate")
 async def generate_report(request: QueryRequest):
     """POST /generate { "query": "도널드 트럼프" }"""
-    payload = await request.query()
-    query = payload.get("query", "")
+    query = request.query
+
     if not query:
-        return {"error": "query field is required"}
+        raise HTTPException(400, "query field is required")
+
     result = await run_agent(query)
     return json.loads(result)
 
