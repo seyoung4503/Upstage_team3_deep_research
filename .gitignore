@@ -4,3 +4,4 @@ __pycache__
 .langgraph_api/
 deep_research.egg-info/
 *.pyc
+tests
