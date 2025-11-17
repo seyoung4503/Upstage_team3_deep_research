@@ -7,12 +7,14 @@ from dotenv import load_dotenv
 from langgraph.checkpoint.memory import InMemorySaver
 from langchain_core.messages import HumanMessage
 from deep_research.research_agent_full import deep_researcher_builder
-
+from pydantic import BaseModel
 
 load_dotenv()
 
 app = FastAPI(title="Deep Research Server")
 
+class QueryRequest(BaseModel):
+    query: str
 
 checkpointer = InMemorySaver()
 full_agent = deep_researcher_builder.compile(checkpointer=checkpointer)
@@ -30,9 +32,9 @@ async def run_agent(query: str):
 
 
 @app.post("/generate")
-async def generate_report(request: Request):
+async def generate_report(request: QueryRequest):
     """POST /generate { "query": "도널드 트럼프" }"""
-    payload = await request.json()
+    payload = await request.query()
     query = payload.get("query", "")
     if not query:
         return {"error": "query field is required"}
