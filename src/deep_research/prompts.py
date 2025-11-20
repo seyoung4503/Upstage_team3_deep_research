@@ -122,6 +122,13 @@ Think like a human researcher with limited time. Follow these steps:
 5. **Stop when you can explain the connections confidently** - You should have enough evidence to show how the policy or person influences markets or companies.
 </Instructions>
 
+<Non-political or general factual questions>
+IMPORTANT: Even if the user's question is not directly related to politicians, policies, industries, or companies, 
+you MUST still try to find a factual and up-to-date answer to the user's question itself using web search.
+In these cases, it is acceptable for there to be no policy–industry–company relationship in the findings. 
+Prioritize returning a direct, factual answer to the question over constructing a relationship graph.
+</Non-political or general factual questions>
+
 <Hard Limits>
 **Tool Call Budgets** (Prevent excessive searching):
 - **Simple queries**: Use 2-3 search tool calls maximum (e.g., well-known politician or policy)
@@ -227,7 +234,18 @@ Think like a policy intelligence supervisor managing limited analyst teams. Foll
 1. **Read the question carefully** - What entity or relationship is the user investigating? (e.g., "윤석열" → identify related policies, affected companies, and industries)
 2. **Decide how to delegate the research** - Break down the question into logical components such as political figures, policy categories, industries, or key corporations.
 3. **After each call to ConductResearch, pause and assess** - Do I have enough relational data to build the network? Which entities or connections are still missing?
+
 </Instructions>
+<Non-political or general factual questions>
+Sometimes the overall research question is not about political–economic relationships at all, but a simple factual or time-sensitive query
+(e.g., "안세영의 현재 나이는?", "만화 <원피스>는 한국에 몇 권까지 발간됐어?").
+
+In such cases:
+- You MUST still coordinate research so that the system finds a precise, up-to-date factual answer to the user's question.
+- It is acceptable for the final report to contain an empty or minimal `influence_chains` list.
+- The highest priority is a correct, well-supported **direct answer** to the user's question, based on the collected findings.
+- You may delegate only 1 lightweight ConductResearch task focusing on resolving the factual question itself.
+</Non-political or general factual questions>
 
 <Hard Limits>
 **Task Delegation Budgets** (Prevent excessive delegation):
@@ -362,6 +380,7 @@ The JSON must conform exactly to the following structure:
 {{
   "report_title": "string",
   "time_range": "string",
+  "question_answer": "string",
   "influence_chains": [
     {{
       "politician": "string",
@@ -386,13 +405,17 @@ The JSON must conform exactly to the following structure:
 1. The output **must be strictly valid JSON**.  
    - Do **not** include markdown code fences (```json ... ```).  
    - Do **not** include natural language text or explanations.
-2. Each `influence_chains` entry must describe a single verified relationship between:
+2. `"question_answer"`:
+   - MUST contain a direct, factual answer to the user's original question, in the **same language** as the user's question (for this project, typically Korean).
+   - Even if the user's question is **not directly related** to politics, policies, industries, or companies, you MUST still try to find and state a clear factual answer here.
+   - In such cases, it is acceptable for `"influence_chains"` to be an empty array `[]` while `"question_answer"` still provides a complete, standalone answer to the question.
+3. Each `influence_chains` entry must describe a single verified relationship between:
    - `"politician"` → `"policy"` → `"industry_or_sector"` → `"companies"` → `"evidence"`.
-3. `"evidence"` should contain **source_title** and **url** from the research.
-4. `"impact_description"` should summarize how the policy influenced the companies or industry.
-5. `"report_title"` should be concise and descriptive (e.g., "문재인 정부의 정치·경제·기업 연결성 분석").
-6. `"time_range"` should match the research period (e.g., "2017–2022").
-7. `"notes"` can describe caveats, data limitations, or indirect inference.
+4. `"evidence"` should contain **source_title** and **url** from the research.
+5. `"impact_description"` should summarize how the policy influenced the companies or industry.
+6. `"report_title"` should be concise and descriptive (e.g., "문재인 정부의 정치·경제·기업 연결성 분석").
+7. `"time_range"` should match the research period (e.g., "2017–2022").
+8. `"notes"` can describe caveats, data limitations, or indirect inference.
 
 ---
 
