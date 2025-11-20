@@ -47,6 +47,7 @@ class InfluenceChain(BaseModel):
 class InfluenceReport(BaseModel):
     report_title: str
     time_range: str
+    question_answer: str
     influence_chains: List[InfluenceChain]
     notes: Optional[str] = ""
 
