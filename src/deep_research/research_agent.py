@@ -17,13 +17,13 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from deep_research.state_research import ResearcherState, ResearcherOutputState
-from deep_research.utils import tavily_search, get_today_str, think_tool
+from deep_research.utils import tavily_search, get_today_str, think_tool, naver_search
 from deep_research.prompts import research_agent_prompt, compress_research_system_prompt, compress_research_human_message
 
 # ===== CONFIGURATION =====
 
 # Set up tools and model binding
-tools = [tavily_search, think_tool]
+tools = [tavily_search, think_tool, naver_search]
 tools_by_name = {tool.name: tool for tool in tools}
 
 # Initialize models
