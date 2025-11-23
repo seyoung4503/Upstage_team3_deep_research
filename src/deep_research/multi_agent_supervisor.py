@@ -1,15 +1,3 @@
-
-"""Multi-agent supervisor for coordinating research across multiple specialized agents.
-
-This module implements a supervisor pattern where:
-1. A supervisor agent coordinates research activities and delegates tasks
-2. Multiple researcher agents work on specific sub-topics independently
-3. Results are aggregated and compressed for final reporting
-
-The supervisor uses parallel research execution to improve efficiency while
-maintaining isolated context windows for each research topic.
-"""
-
 import asyncio
 import os
 from typing_extensions import Literal
@@ -55,21 +43,7 @@ def get_notes_from_tool_calls(messages: list[BaseMessage]) -> list[str]:
     """
     return [tool_msg.content for tool_msg in filter_messages(messages, include_types="tool")]
 
-# Ensure async compatibility for Jupyter environments
-try:
-    import nest_asyncio
-    # Only apply if running in Jupyter/IPython environment
-    try:
-        from IPython import get_ipython
-        if get_ipython() is not None:
-            nest_asyncio.apply()
-    except ImportError:
-        pass  # Not in Jupyter, no need for nest_asyncio
-except ImportError:
-    pass  # nest_asyncio not available, proceed without it
 
-
-# ===== CONFIGURATION =====
 
 supervisor_tools = [ConductResearch, ResearchComplete, think_tool]
 supervisor_model = ChatUpstage(api_key=os.getenv("UPSTAGE_API_KEY"), model="solar-pro2", temperature=0)
@@ -77,14 +51,11 @@ supervisor_model_with_tools = supervisor_model.bind_tools(supervisor_tools)
 
 # System constants
 # Maximum number of tool call iterations for individual researcher agents
-# This prevents infinite loops and controls research depth per topic
 max_researcher_iterations = 3 # Calls to think_tool + ConductResearch
 
 # Maximum number of concurrent research agents the supervisor can launch
-# This is passed to the lead_researcher_prompt to limit parallel research tasks
 max_concurrent_researchers = 1
 
-# ===== SUPERVISOR NODES =====
 
 async def supervisor(state: SupervisorState) -> Command[Literal["supervisor_tools"]]:
     """Coordinate research activities.
@@ -102,7 +73,6 @@ async def supervisor(state: SupervisorState) -> Command[Literal["supervisor_tool
     """
     supervisor_messages = state.get("supervisor_messages", [])
 
-    # Prepare system message with current date and constraints
     system_message = lead_researcher_prompt.format(
         date=get_today_str(), 
         max_concurrent_research_units=max_concurrent_researchers,
@@ -110,7 +80,6 @@ async def supervisor(state: SupervisorState) -> Command[Literal["supervisor_tool
     )
     messages = [SystemMessage(content=system_message)] + supervisor_messages
 
-    # Make decision about next research steps
     response = await supervisor_model_with_tools.ainvoke(messages)
 
     return Command(
@@ -140,13 +109,11 @@ async def supervisor_tools(state: SupervisorState) -> Command[Literal["superviso
     research_iterations = state.get("research_iterations", 0)
     most_recent_message = supervisor_messages[-1]
 
-    # Initialize variables for single return pattern
     tool_messages = []
     all_raw_notes = []
-    next_step = "supervisor"  # Default next step
+    next_step = "supervisor"
     should_end = False
 
-    # Check exit criteria first
     exceeded_iterations = research_iterations >= max_researcher_iterations
     no_tool_calls = not most_recent_message.tool_calls
     research_complete = any(
@@ -159,9 +126,7 @@ async def supervisor_tools(state: SupervisorState) -> Command[Literal["superviso
         next_step = END
 
     else:
-        # Execute ALL tool calls before deciding next step
         try:
-            # Separate think_tool calls from ConductResearch calls
             think_tool_calls = [
                 tool_call for tool_call in most_recent_message.tool_calls 
                 if tool_call["name"] == "think_tool"
@@ -172,7 +137,6 @@ async def supervisor_tools(state: SupervisorState) -> Command[Literal["superviso
                 if tool_call["name"] == "ConductResearch"
             ]
 
-            # Handle think_tool calls (synchronous)
             for tool_call in think_tool_calls:
                 observation = think_tool.invoke(tool_call["args"])
                 tool_messages.append(
@@ -183,9 +147,7 @@ async def supervisor_tools(state: SupervisorState) -> Command[Literal["superviso
                     )
                 )
 
-            # Handle ConductResearch calls (asynchronous)
             if conduct_research_calls:
-                # Launch parallel research agents
                 coros = [
                     researcher_agent.ainvoke({
                         "researcher_messages": [
@@ -196,13 +158,7 @@ async def supervisor_tools(state: SupervisorState) -> Command[Literal["superviso
                     for tool_call in conduct_research_calls
                 ]
 
-                # Wait for all research to complete
                 tool_results = await asyncio.gather(*coros)
-
-                # Format research results as tool messages
-                # Each sub-agent returns compressed research findings in result["compressed_research"]
-                # We write this compressed research as the content of a ToolMessage, which allows
-                # the supervisor to later retrieve these findings via get_notes_from_tool_calls()
                 research_tool_messages = [
                     ToolMessage(
                         content=result.get("compressed_research", "Error synthesizing research report"),
@@ -213,7 +169,6 @@ async def supervisor_tools(state: SupervisorState) -> Command[Literal["superviso
 
                 tool_messages.extend(research_tool_messages)
 
-                # Aggregate raw notes from all research
                 all_raw_notes = [
                     "\n".join(result.get("raw_notes", [])) 
                     for result in tool_results
@@ -224,7 +179,6 @@ async def supervisor_tools(state: SupervisorState) -> Command[Literal["superviso
             should_end = True
             next_step = END
 
-    # Single return point with appropriate state updates
     if should_end:
         return Command(
             goto=next_step,
@@ -242,9 +196,7 @@ async def supervisor_tools(state: SupervisorState) -> Command[Literal["superviso
             }
         )
 
-# ===== GRAPH CONSTRUCTION =====
 
-# Build supervisor graph
 supervisor_builder = StateGraph(SupervisorState)
 supervisor_builder.add_node("supervisor", supervisor)
 supervisor_builder.add_node("supervisor_tools", supervisor_tools)

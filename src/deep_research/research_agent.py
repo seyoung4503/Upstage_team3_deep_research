@@ -1,10 +1,3 @@
-
-"""Research Agent Implementation.
-
-This module implements a research agent that can perform iterative web searches
-and synthesis to answer complex research questions.
-"""
-
 import os
 from pydantic import BaseModel, Field
 from typing_extensions import Literal
@@ -17,21 +10,18 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from deep_research.state_research import ResearcherState, ResearcherOutputState
-from deep_research.utils import tavily_search, get_today_str, think_tool, naver_search
+from deep_research.utils import tavily_search, get_today_str, think_tool, naver_search, google_search_grounded
 from deep_research.prompts import research_agent_prompt, compress_research_system_prompt, compress_research_human_message
 
-# ===== CONFIGURATION =====
 
-# Set up tools and model binding
-tools = [tavily_search, think_tool, naver_search]
+tools = [google_search_grounded, naver_search, tavily_search, think_tool]
 tools_by_name = {tool.name: tool for tool in tools}
 
-# Initialize models
+
 model = ChatUpstage(api_key=os.getenv("UPSTAGE_API_KEY"), model="solar-pro2", temperature=0)
 model_with_tools = model.bind_tools(tools)
 compress_model = model
 
-# ===== AGENT NODES =====
 
 def llm_call(state: ResearcherState):
     """Analyze current state and decide on next actions.
@@ -58,13 +48,11 @@ def tool_node(state: ResearcherState):
     """
     tool_calls = state["researcher_messages"][-1].tool_calls
 
-    # Execute all tool calls
     observations = []
     for tool_call in tool_calls:
         tool = tools_by_name[tool_call["name"]]
         observations.append(tool.invoke(tool_call["args"]))
 
-    # Create tool message outputs
     tool_outputs = [
         ToolMessage(
             content=observation,
@@ -86,7 +74,6 @@ def compress_research(state: ResearcherState) -> dict:
     messages = [SystemMessage(content=system_message)] + state.get("researcher_messages", []) + [HumanMessage(content=compress_research_human_message)]
     response = compress_model.invoke(messages)
 
-    # Extract raw notes from tool and AI messages
     raw_notes = [
         str(m.content) for m in filter_messages(
             state["researcher_messages"], 
@@ -99,7 +86,6 @@ def compress_research(state: ResearcherState) -> dict:
         "raw_notes": ["\n".join(raw_notes)]
     }
 
-# ===== ROUTING LOGIC =====
 
 def should_continue(state: ResearcherState) -> Literal["tool_node", "compress_research"]:
     """Determine whether to continue research or provide final answer.
@@ -114,34 +100,29 @@ def should_continue(state: ResearcherState) -> Literal["tool_node", "compress_re
     messages = state["researcher_messages"]
     last_message = messages[-1]
 
-    # If the LLM makes a tool call, continue to tool execution
     if last_message.tool_calls:
         return "tool_node"
-    # Otherwise, we have a final answer
+
     return "compress_research"
 
-# ===== GRAPH CONSTRUCTION =====
 
-# Build the agent workflow
 agent_builder = StateGraph(ResearcherState, output_schema=ResearcherOutputState)
 
-# Add nodes to the graph
+
 agent_builder.add_node("llm_call", llm_call)
 agent_builder.add_node("tool_node", tool_node)
 agent_builder.add_node("compress_research", compress_research)
 
-# Add edges to connect nodes
 agent_builder.add_edge(START, "llm_call")
 agent_builder.add_conditional_edges(
     "llm_call",
     should_continue,
     {
-        "tool_node": "tool_node", # Continue research loop
-        "compress_research": "compress_research", # Provide final answer
+        "tool_node": "tool_node", 
+        "compress_research": "compress_research",
     },
 )
-agent_builder.add_edge("tool_node", "llm_call") # Loop back for more research
+agent_builder.add_edge("tool_node", "llm_call")
 agent_builder.add_edge("compress_research", END)
 
-# Compile the agent
 researcher_agent = agent_builder.compile()

@@ -1,18 +1,9 @@
-
-"""
-State Definitions and Pydantic Schemas for Research Agent
-
-This module defines the state objects and structured schemas used for
-the research agent workflow, including researcher state management and output schemas.
-"""
-
 import operator
 from typing_extensions import TypedDict, Annotated, List, Sequence
 from pydantic import BaseModel, Field
 from langchain_core.messages import BaseMessage
 from langgraph.graph.message import add_messages
 
-# ===== STATE DEFINITIONS =====
 
 class ResearcherState(TypedDict):
     """
@@ -39,19 +30,6 @@ class ResearcherOutputState(TypedDict):
     raw_notes: Annotated[List[str], operator.add]
     researcher_messages: Annotated[Sequence[BaseMessage], add_messages]
 
-# ===== STRUCTURED OUTPUT SCHEMAS =====
-
-class ClarifyWithUser(BaseModel):
-    """Schema for user clarification decisions during scoping phase."""
-    need_clarification: bool = Field(
-        description="Whether the user needs to be asked a clarifying question.",
-    )
-    question: str = Field(
-        description="A question to ask the user to clarify the report scope",
-    )
-    verification: str = Field(
-        description="Verify message that we will start research after the user has provided the necessary information.",
-    )
 
 class ResearchQuestion(BaseModel):
     """Schema for research brief generation."""
