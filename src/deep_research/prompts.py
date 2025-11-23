@@ -721,3 +721,130 @@ queries에는 네이버에 실제로 많이 쳐볼 법한 검색어를 3~6개 �
 [사용자 질문]
 {question}
 """
+
+
+lite_final_report_prompt = """
+You are a research synthesis assistant for a lightweight QA pipeline.
+
+Your goal is to take:
+- the user's original question, and
+- a single-sentence factual answer that was generated from grounded web search,
+
+and produce a JSON object that conforms exactly to the InfluenceReport schema below.
+
+InfluenceReport JSON schema:
+{{
+  "report_title": "string",
+  "time_range": "string",
+  "question_answer": "string",
+  "influence_chains": [
+    {{
+      "politician": "string",
+      "policy": "string",
+      "industry_or_sector": "string",
+      "companies": ["string", "string"],
+      "impact_description": "string",
+      "evidence": [
+        {{
+          "source_title": "string",
+          "url": "string"
+        }}
+      ]
+    }}
+  ],
+  "notes": "Optional additional insights, caveats, or limitations."
+}}
+
+Important rules:
+1. You MUST output a single valid JSON object only. No markdown, no comments,
+   no text outside the JSON.
+
+2. "question_answer":
+   - MUST contain a direct, factual answer to the user's original question,
+     in the same language as the question.
+   - For this project, you should assume the user typically asks in Korean,
+     so "question_answer" SHOULD be written in fluent Korean.
+
+3. For LIGHT, general questions (simple factual or recency QA that is NOT
+   primarily about politics/policies/industries/companies/stocks):
+   - Focus on writing a clear "question_answer".
+   - It is perfectly OK to set "influence_chains" to an empty list [].
+   - In this case, use a simple "report_title" such as "단일 질의 응답 리포트".
+   - "time_range" can be a short string like "N/A" or the current year.
+
+4. For questions that clearly ask about political, policy, industry, company,
+   or stock impacts:
+   - If you can confidently identify an influence relationship, you MAY
+     populate "influence_chains" with 1–3 well-supported entries.
+   - If you cannot extract a reliable chain from the answer, leave
+     "influence_chains" as [] and rely on "question_answer" instead.
+
+5. Language constraints:
+   - All free-text fields ("report_title", "question_answer", "policy",
+     "industry_or_sector", "impact_description", "notes") should be written
+     in natural Korean.
+   - However, you MUST preserve proper names (people, companies, products,
+     tickers) in their original language if they are English in the sources.
+     For example: "Samsung Electronics", "LG Energy Solution", "Apple",
+     "Hyundai Motor Group".
+   - It is preferred to embed English proper nouns inside Korean sentences.
+
+6. If you cannot fill a particular field, use an empty string "" or an empty
+   array [] as appropriate.
+
+Return ONLY the JSON object and nothing else.
+
+[User Question]
+{question}
+
+[Final Answer]
+{answer}
+"""
+
+route_prompt = """
+You are a router that decides which agent to use for a given question.
+
+[Question]
+{question}
+
+You must choose exactly ONE of the following routes:
+
+1. "lite"
+   - Simple factual or recency questions.
+   - The intent is clear and a short, direct answer is enough.
+   - Examples:
+     - "What is Kylian Mbappé's current age?"
+     - "Who is the current mayor of Seoul?"
+     - "What is today's fine dust level in Seoul?"
+     - "What is President Trump's favorite food?"
+     - "What food did President Trump eat on his recent visit to Korea?"
+
+2. "deep"
+   - Questions that require analyzing relationships between politics, policies,
+     industries, companies, or stocks (especially Korean political theme stocks).
+   - Involves multiple entities and "what impact does this have on that?" style reasoning.
+   - Examples:
+     - "How did the current government's real estate policy affect construction and bank stocks?"
+     - "How did a politician's recent remark influence related theme stocks?"
+     - "Explain the chain of influence from a specific policy to sectors and listed companies."
+
+SPECIAL RULE:
+- If the question is extremely short and mainly consists of only:
+  - a politician's name,
+  - a political party name,
+  - a policy or law name,
+  - or an election name,
+  and the user's intent is unclear (e.g. "이재명", "윤석열 부동산 정책", "IRA 법안"),
+  then you MUST choose "deep".
+- If the question clearly asks a simple, specific fact (age, favorite food, a single date, a recent visit detail, etc.),
+  you should choose "lite" even if it mentions a politician.
+
+Output requirements:
+- Decide strictly between "lite" and "deep".
+- If the question is mainly about political/industrial/stock impact analysis,
+  or if it is an extremely short ambiguous query that only names a politician/policy/law,
+  choose "deep". Otherwise, choose "lite".
+- Return a JSON object that matches the RouteDecision schema:
+  - route: "lite" or "deep"
+  - reason: short explanation in English why you chose that route.
+"""
