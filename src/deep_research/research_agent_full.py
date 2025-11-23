@@ -8,9 +8,9 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from deep_research.utils import get_today_str
-from deep_research.prompts import final_report_generation_prompt
+from deep_research.prompts import generate_influence_report_prompt
 from deep_research.state_scope import AgentState, AgentInputState
-from deep_research.research_agent_scope import write_research_brief
+from deep_research.research_agent_scope import research_brief_planner
 from deep_research.multi_agent_supervisor import supervisor_agent
 
 from pydantic import BaseModel
@@ -40,7 +40,7 @@ writer_model = ChatUpstage(api_key=os.getenv("UPSTAGE_API_KEY"), model="solar-pr
 
 
 
-async def final_report_generation(state: AgentState):
+async def generate_influence_report(state: AgentState):
     """
     Final report generation node.
 
@@ -51,7 +51,7 @@ async def final_report_generation(state: AgentState):
 
     findings = "\n".join(notes)
 
-    final_report_prompt = final_report_generation_prompt.format(
+    final_report_prompt = generate_influence_report_prompt.format(
         research_brief=state.get("research_brief", ""),
         findings=findings,
         date=get_today_str()
@@ -67,13 +67,13 @@ async def final_report_generation(state: AgentState):
 
 deep_researcher_builder = StateGraph(AgentState, input_schema=AgentInputState)
 
-deep_researcher_builder.add_node("write_research_brief", write_research_brief)
+deep_researcher_builder.add_node("research_brief_planner", research_brief_planner)
 deep_researcher_builder.add_node("supervisor_subgraph", supervisor_agent)
-deep_researcher_builder.add_node("final_report_generation", final_report_generation)
+deep_researcher_builder.add_node("generate_influence_report", generate_influence_report)
 
-deep_researcher_builder.add_edge(START, "write_research_brief")
-deep_researcher_builder.add_edge("write_research_brief", "supervisor_subgraph")
-deep_researcher_builder.add_edge("supervisor_subgraph", "final_report_generation")
-deep_researcher_builder.add_edge("final_report_generation", END)
+deep_researcher_builder.add_edge(START, "research_brief_planner")
+deep_researcher_builder.add_edge("research_brief_planner", "supervisor_subgraph")
+deep_researcher_builder.add_edge("supervisor_subgraph", "generate_influence_report")
+deep_researcher_builder.add_edge("generate_influence_report", END)
 
 agent = deep_researcher_builder.compile()

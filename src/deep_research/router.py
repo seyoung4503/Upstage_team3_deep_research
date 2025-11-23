@@ -22,7 +22,7 @@ from deep_research.research_agent_full import (
     writer_model,
 )
 from deep_research.utils import get_today_str
-from deep_research.prompts import final_report_generation_prompt, route_prompt
+from deep_research.prompts import generate_influence_report_prompt, route_prompt
 
 load_dotenv()
 
@@ -80,7 +80,7 @@ def lite_branch_node(state: AgentState) -> dict:
        - findings: compressed research text (all info preserved)
 
     2) Feed (research_brief = question, findings = compressed text) into the
-       existing final_report_generation_prompt + writer_model to produce
+       existing generate_influence_report_prompt + writer_model to produce
        a full InfluenceReport JSON.
 
     This way we avoid information loss while keeping the pipeline lightweight.
@@ -91,7 +91,7 @@ def lite_branch_node(state: AgentState) -> dict:
     lite_state: LiteResearchState = lite_graph.invoke({"question": question})
     findings = lite_state["findings"]
 
-    final_prompt = final_report_generation_prompt.format(
+    final_prompt = generate_influence_report_prompt.format(
         research_brief=question,
         findings=findings,
         date=get_today_str(),

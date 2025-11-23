@@ -19,7 +19,7 @@ load_dotenv()
 model = ChatUpstage(api_key=os.getenv("UPSTAGE_API_KEY"), model="solar-pro2", temperature=0)
 
 
-def write_research_brief(state: AgentState):
+def research_brief_planner(state: AgentState):
     """
     Transform the conversation history into a comprehensive research brief.
 

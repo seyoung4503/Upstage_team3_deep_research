@@ -502,7 +502,7 @@ CRITICAL REQUIREMENTS:
 
 The cleaned findings will be used for final report generation and knowledge graph construction, so comprehensiveness and relational fidelity are critical."""
 
-final_report_generation_prompt = """
+generate_influence_report_prompt = """
 You are a research synthesis assistant.
 
 Based on the research brief and findings below, produce a **single JSON object only** — no explanations, no markdown headings, no commentary.
