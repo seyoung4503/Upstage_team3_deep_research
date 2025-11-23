@@ -150,7 +150,7 @@ def format_search_results(
 
 def tavily_backend(
     query: str,
-    max_results: int = 3,
+    max_results: int = 1,
     topic: Literal["general", "news", "finance"] = "general",
 ) -> SearchResultMap:
     """
@@ -185,7 +185,7 @@ def tavily_backend(
 @tool(parse_docstring=True)
 def tavily_search(
     query: str,
-    max_results: Annotated[int, InjectedToolArg] = 3,
+    max_results: Annotated[int, InjectedToolArg] = 1,
     topic: Annotated[Literal["general", "news", "finance"], InjectedToolArg] = "general",
 ) -> str:
     """
@@ -311,7 +311,7 @@ def fetch_clean_content(url: str) -> str:
 def deep_search_naver_internal(
     refined_query: str,
     needs_recency: bool,
-    max_results: int = 5,
+    max_results: int = 3,
 ) -> SearchResultMap:
     """
     Search Naver OpenAPI (news/webkr/blog), scrape each page,
@@ -434,7 +434,7 @@ def generate_naver_style_queries(original_question: str) -> KRQuerySet:
 
 def naver_backend(
     question: str,
-    max_results: int = 5,
+    max_results: int = 3,
 ) -> SearchResultMap:
     """
     High-level Naver backend:
@@ -473,7 +473,7 @@ def naver_backend(
 @tool(parse_docstring=True)
 def naver_search(
     question: str,
-    max_results: Annotated[int, "Maximum number of sources to use"] = 5,
+    max_results: Annotated[int, "Maximum number of sources to use"] = 3,
 ) -> str:
     """
     Korean-focused search tool that uses:

@@ -9,6 +9,7 @@ from langchain_core.messages import HumanMessage
 from deep_research.research_agent_full import deep_researcher_builder
 from pydantic import BaseModel
 from fastapi import HTTPException
+from deep_research.router import router_builder
 
 load_dotenv()
 
@@ -18,7 +19,9 @@ class QueryRequest(BaseModel):
     query: str
 
 checkpointer = InMemorySaver()
-full_agent = deep_researcher_builder.compile(checkpointer=checkpointer)
+# full_agent = deep_researcher_builder.compile(checkpointer=checkpointer)
+full_agent = router_builder.compile(checkpointer=checkpointer)
+
 
 async def run_agent(query: str):
     """에이전트를 실행하고 결과(JSON) 반환"""
