@@ -20,7 +20,7 @@ class URLScraper:
         self,
         headless: bool = True,
         timeout_ms: int = 20_000,
-        wait_until: str = "networkidle",  # "load", "domcontentloaded", "networkidle"
+        wait_until: str = "load",  # "load", "domcontentloaded", "networkidle"
         max_chars: int = 50_000,
         user_agent: Optional[str] = None,
     ):
@@ -126,13 +126,11 @@ class URLScraper:
         - concurrency: 동시에 몇 개까지 열지 (너무 크게 하면 사이트가 막거나 느려질 수 있음)
         """
         semaphore = asyncio.Semaphore(concurrency)
-        results: List[Dict[str, Any]] = []
 
-        async def _worker(u: str):
+        async def _worker(u: str) -> Dict[str, Any]:
             async with semaphore:
-                result = await self.fetch_one(u)
-                results.append(result)
+                return await self.fetch_one(u)
 
         tasks = [asyncio.create_task(_worker(u)) for u in urls]
-        await asyncio.gather(*tasks)
+        results = await asyncio.gather(*tasks)
         return results
