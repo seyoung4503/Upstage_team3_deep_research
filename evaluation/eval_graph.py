@@ -1,12 +1,13 @@
-# eval_graph.py
-from __future__ import annotations
-
-import asyncio
-from collections import defaultdict
+import os
 from typing import Any, Dict, List, Optional
 
 from typing_extensions import TypedDict
+from pydantic import BaseModel, Field
+
 from langgraph.graph import StateGraph, END
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_google_genai import ChatGoogleGenerativeAI
+from dotenv import load_dotenv
 
 from impact_evidence_faithfulness import (
     EvidenceItem,
@@ -20,51 +21,50 @@ from policy_attribution_consistency import (
     evaluate_policy_attribution_node,
 )
 from eval_tools import URLScraper
+from eval_prompt import gold_compare
 
 
 class CombinedEvalState(TypedDict, total=False):
     """
-    Shared state for running both:
+    Shared state used to run:
     - Impact Evidence Faithfulness
     - Policy Attribution Consistency
-    on a single influence chain segment.
+    - Gold vs Model report comparison
+    for a single influence chain or report.
     """
 
-    # Shared high-level context
+    # High-level context
     politician: Optional[str]
     policy: Optional[str]
     question: Optional[str]
 
-    # Core chain metadata
+    # Chain-level metadata (for per-chain evaluation)
     industry_or_sector: str
     companies: List[str]
     impact_description: str
 
-    # Evidence list from influence report
+    # Evidence list from the model's influence report
     evidence: List[EvidenceItem]
 
-    # Scraped pages (shared by both metrics)
+    # Scraped pages for all evidence URLs
     scraped_pages: List[Dict[str, Any]]
 
     # Metric-specific outputs
     impact_results: List[PerURLImpactEval]
     attribution_results: List[PerURLPolicyAttributionEval]
 
-    # Combined summary/aggregation
+    # Gold vs model report comparison
+    gold_report: Optional[Dict[str, Any]]
+    model_report: Optional[Dict[str, Any]]
+    gold_eval: Optional[Dict[str, Any]]
+
     combined_summary: Dict[str, Any]
 
 
 async def scrape_urls_node(state: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Open all evidence URLs with Playwright and extract page text.
-
-    Input:
-        state["evidence"]: list of { "source_title": str, "url": str }
-
-    Output:
-        state["scraped_pages"]: list of {
-            "url", "ok", "status", "final_url", "title", "text", "error"
-        }
+    Fetch all evidence URLs using Playwright (via URLScraper)
+    and attach the scraped page info to the state as `scraped_pages`.
     """
     evidence = state.get("evidence", [])
     urls = [ev["url"] for ev in evidence]
@@ -87,93 +87,100 @@ async def scrape_urls_node(state: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def _aggregate_impact(impact_results: List[PerURLImpactEval]) -> Dict[str, Any]:
+# =========================
+# Gold vs Model Report Comparison
+# =========================
+
+load_dotenv()
+API_KEY = os.getenv("GOOGLE_API_KEY")
+
+gold_llm = ChatGoogleGenerativeAI(
+    model="gemini-2.5-flash",
+    api_key=API_KEY,
+    temperature=0.0,
+    convert_system_message_to_human=True,
+)
+
+
+
+class GoldCompareResult(BaseModel):
+    """Structured output for comparing gold_report and model_report."""
+
+    similarity_score: float = Field(
+        ...,
+        ge=0.0,
+        le=1.0,
+        description="Similarity score between 0.0 and 1.0.",
+    )
+    reasoning: str = Field(
+        ...,
+        description="Short Korean explanation of how the two reports were compared.",
+    )
+    model_unique_points: List[str] = Field(
+        default_factory=list,
+        description="Key points that appear only in the model_report.",
+    )
+    gold_unique_points: List[str] = Field(
+        default_factory=list,
+        description="Key points that appear only in the gold_report.",
+    )
+
+
+gold_prompt = ChatPromptTemplate.from_template(gold_compare)
+gold_structured_llm = gold_llm.with_structured_output(GoldCompareResult, strict=True)
+gold_chain = gold_prompt | gold_structured_llm
+
+
+async def evaluate_gold_node(state: CombinedEvalState) -> CombinedEvalState:
     """
-    Aggregate impact evidence scores and labels.
+    Compare `gold_report` and `model_report` using an LLM-as-judge.
+
+    This node expects:
+    - state["question"]
+    - state["gold_report"]
+    - state["model_report"]
+
+    If either gold_report or model_report is missing, this node
+    simply returns the state unchanged.
     """
-    if not impact_results:
-        return {
-            "avg_score": None,
-            "label_counts": {},
+    question = state.get("question", "") or ""
+    gold_report = state.get("gold_report")
+    model_report = state.get("model_report")
+
+    if gold_report is None or model_report is None:
+        # Nothing to compare; skip this node
+        return state
+
+    result: GoldCompareResult = await gold_chain.ainvoke(
+        {
+            "question": question,
+            "gold_report": gold_report,
+            "model_report": model_report,
         }
-
-    scores = [r.score for r in impact_results]
-    avg_score = sum(scores) / len(scores) if scores else None
-
-    label_counts: Dict[str, int] = defaultdict(int)
-    for r in impact_results:
-        label_counts[r.label] += 1
+    )
 
     return {
-        "avg_score": avg_score,
-        "label_counts": dict(label_counts),
-    }
-
-
-def _aggregate_attribution(
-    attribution_results: List[PerURLPolicyAttributionEval],
-) -> Dict[str, Any]:
-    """
-    Aggregate policy attribution scores and relation labels.
-    """
-    if not attribution_results:
-        return {
-            "avg_score": None,
-            "label_counts": {},
-            "politician_mentioned_ratio": None,
-            "policy_topic_mentioned_ratio": None,
-        }
-
-    scores = [r.score for r in attribution_results]
-    avg_score = sum(scores) / len(scores) if scores else None
-
-    label_counts: Dict[str, int] = defaultdict(int)
-    politician_mentioned = 0
-    policy_topic_mentioned = 0
-
-    for r in attribution_results:
-        label_counts[r.label] += 1
-        if r.politician_mentioned:
-            politician_mentioned += 1
-        if r.policy_topic_mentioned:
-            policy_topic_mentioned += 1
-
-    total = len(attribution_results)
-    return {
-        "avg_score": avg_score,
-        "label_counts": dict(label_counts),
-        "politician_mentioned_ratio": politician_mentioned / total if total else None,
-        "policy_topic_mentioned_ratio": policy_topic_mentioned / total if total else None,
+        **state,
+        "gold_eval": result.model_dump(),
     }
 
 
 async def combine_node(state: CombinedEvalState) -> CombinedEvalState:
     """
-    Combine impact_evidence and policy_attribution results
-    into a single summary object.
+    Merge the outputs from:
+    - impact_evidence_faithfulness
+    - policy_attribution_consistency
+    - gold vs model report comparison
+
+    into a single `combined_summary` object.
+    No extra aggregation or scoring is done here; we simply
+    package the raw results so that a downstream script can
+    perform any desired analysis.
     """
-    impact_results: List[PerURLImpactEval] = state.get("impact_results", []) or []
-    attribution_results: List[PerURLPolicyAttributionEval] = (
-        state.get("attribution_results", []) or []
-    )
-
-    impact_summary = _aggregate_impact(impact_results)
-    attribution_summary = _aggregate_attribution(attribution_results)
-
     combined_summary: Dict[str, Any] = {
-        "impact": impact_summary,
-        "attribution": attribution_summary,
-        # You can add high-level flags here if you want
-        "flags": {
-            "has_low_impact_evidence": (
-                impact_summary["avg_score"] is not None
-                and impact_summary["avg_score"] < 0.5
-            ),
-            "has_weak_attribution": (
-                attribution_summary["avg_score"] is not None
-                and attribution_summary["avg_score"] < 0.5
-            ),
-        },
+        "impact_results": state.get("impact_results", []),
+        "attribution_results": state.get("attribution_results", []),
+        "gold_eval": state.get("gold_eval"),
     }
 
     return {
@@ -182,30 +189,24 @@ async def combine_node(state: CombinedEvalState) -> CombinedEvalState:
     }
 
 
-# ===== Build combined LangGraph workflow =====
 
 workflow = StateGraph(CombinedEvalState)
-
-# 1) Shared URL scraping
 workflow.add_node("scrape_urls", scrape_urls_node)
-
-# 2) Impact Evidence Faithfulness (reusing node from impact_evidence_faithfulness.py)
 workflow.add_node("evaluate_impact", evaluate_impact_node)
-
-# 3) Policy Attribution Consistency (reusing node from policy_attribution_consistency.py)
 workflow.add_node("evaluate_policy_attribution", evaluate_policy_attribution_node)
+workflow.add_node("evaluate_gold", evaluate_gold_node)
 
-# 4) Combine node
 workflow.add_node("combine", combine_node)
 
-# Graph wiring:
-# scrape_urls -> (evaluate_impact, evaluate_policy_attribution)
-# both -> combine -> END
 workflow.set_entry_point("scrape_urls")
 workflow.add_edge("scrape_urls", "evaluate_impact")
 workflow.add_edge("scrape_urls", "evaluate_policy_attribution")
+workflow.add_edge("scrape_urls", "evaluate_gold")
+
 workflow.add_edge("evaluate_impact", "combine")
 workflow.add_edge("evaluate_policy_attribution", "combine")
+workflow.add_edge("evaluate_gold", "combine")
+
 workflow.add_edge("combine", END)
 
 combined_eval_app = workflow.compile()

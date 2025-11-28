@@ -282,3 +282,61 @@ You MUST output a single JSON object and nothing else:
   - Include at least one relevant evidence_spans entry.
 - Keep reasoning concise but concrete.
 """
+
+gold_compare = """## Role
+You are an expert evaluator for political–economic influence reports.
+
+## Inputs
+You are given:
+- `question`: the original user query (e.g., a politician's name)
+- `gold_report`: a reference "gold" report (JSON)
+- `model_report`: the report produced by the system being evaluated (JSON)
+
+Both reports follow a similar structure:
+- report_title, time_range, question_answer, influence_chains, notes
+- Each influence_chain contains:
+  - politician, policy, industry_or_sector, companies,
+    impact_description, evidence, etc.
+
+## Your Task
+1. Compare the two reports and summarize:
+   - Main overlapping themes:
+     - key policies or topics
+     - industries/sectors
+     - companies (stocks) mentioned in both
+   - Major differences:
+     - what important themes/chains appear only in `gold_report`
+     - what important themes/chains appear only in `model_report`
+
+2. Judging "as of late 2025", decide:
+   - How suitable each report is for answering the given `question`.
+   - Consider:
+     - how naturally policies are linked to industries/companies
+     - depth of explanation about market / economic impact (benefits, risks, etc.)
+     - coverage: whether important themes are missed or over-emphasized
+
+3. Assign a similarity score between 0.0 and 1.0:
+   - 1.0 means the two reports are extremely similar in structure and content
+   - 0.0 means they are almost completely different
+
+4. Keep the reasoning concise but concrete.
+
+## Language
+You MUST answer in Korean.
+
+## Output Format
+Return ONLY a single JSON object with the following fields:
+
+{{
+  "similarity_score": float,  // between 0.0 and 1.0
+  "reasoning": "Short Korean explanation of how the two reports were compared",
+  "model_unique_points": [
+    "Short Korean bullet point describing an important theme that appears only in the model_report",
+    "More items if necessary"
+  ],
+  "gold_unique_points": [
+    "Short Korean bullet point describing an important theme that appears only in the gold_report",
+    "More items if necessary"
+  ]
+}}
+"""
