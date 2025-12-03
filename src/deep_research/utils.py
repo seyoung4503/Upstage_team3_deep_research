@@ -1,7 +1,8 @@
 import os
 import re
+import traceback
 from datetime import datetime
-from typing import Annotated, Dict, List, Literal, Optional, TypedDict
+from typing import Annotated, Dict, List, Literal, Optional, TypedDict, Tuple, Any
 
 import requests
 from bs4 import BeautifulSoup
@@ -269,6 +270,7 @@ def fetch_clean_content(url: str) -> str:
                     target_frame = frame
 
             html = target_frame.content()
+            final_url = target_frame.url
             browser.close()
 
         soup = BeautifulSoup(html, "html.parser")
@@ -302,7 +304,7 @@ def fetch_clean_content(url: str) -> str:
         if "로그인" in clean_text and "해주세요" in clean_text:
             return "🔒 [접근 제한] 로그인 필요한 페이지입니다."
 
-        return clean_text[:4000]
+        return clean_text[:4000], final_url
 
     except Exception as e:  # noqa: BLE001
         return f"❌ 스크래핑 오류: {e}"
@@ -353,7 +355,7 @@ def deep_search_naver_internal(
                 if not link or link in results_by_url:
                     continue
 
-                full_text = fetch_clean_content(link)
+                full_text, _ = fetch_clean_content(link)
 
                 # Fallback to API description if page is not accessible or too short
                 if len(full_text) < 50 or "로그인" in full_text:
@@ -511,14 +513,34 @@ def naver_search(
 def google_grounded_backend(
     query: str,
     model: str = "gemini-2.5-flash",
+    max_results: int = 5,
 ) -> str:
     """
-    Call Gemini with Google Search grounding and return an answer + sources.
+    Run a Google Search Grounding, scrape the grounded URLs,
+    summarize each page with the same pipeline used for Tavily/Naver, and return
+    a unified, human-readable result string.
 
-    This helper:
-    - uses the Google Search tool (Search Grounding)
-    - lets Gemini decide which web queries to run
-    - returns the model's answer text plus a simple "Sources" list if available
+    Behavior:
+    - Uses Gemini only as a "search + URL selector" (no natural-language answer is used).
+    - For each grounded web URL, fetches the main content via Playwright + BeautifulSoup.
+    - Summarizes each page using the Upstage Solar (solar-pro2) summarization model
+      with the `summarize_webpage_prompt`.
+    - Formats all summaries using `format_search_results`, so the final output
+      matches the Tavily/Naver search results format:
+
+        [GOOGLE_SEARCH]
+        query: ...
+        
+        Search results:
+        
+        --- SOURCE 1: <title> ---
+        URL: <url>
+        SUMMARY:
+        <summary>...</summary>
+        <key_excerpts>...</key_excerpts>
+
+    This makes `google_search_grounded` interchangeable with `tavily_search`
+    and `naver_search` from the perspective of downstream agents.
     """
     if google_client is None:
         return (
@@ -527,47 +549,83 @@ def google_grounded_backend(
             "(missing GOOGLE_API_KEY in environment).\n"
         )
 
-    grounding_tool = types.Tool(
-        google_search=types.GoogleSearch()
-    )
+    grounding_tool = types.Tool(google_search=types.GoogleSearch())
     config = types.GenerateContentConfig(tools=[grounding_tool])
 
-    response = google_client.models.generate_content(
-        model=model,
-        contents=query,
-        config=config,
-    )
+    try:
+        response = google_client.models.generate_content(
+            model=model,
+            contents=query,
+            config=config,
+        )
+    except Exception as e:
+        return (
+            "[GOOGLE_SEARCH]\n"
+            "ERROR: Failed to call Google Search grounding.\n"
+            f"Exception: {e}\n"
+        )
 
-    text = response.text or ""
-    sources_lines: List[str] = []
+    raw_results: SearchResultMap = {}
 
     try:
         candidate = response.candidates[0]
         meta = getattr(candidate, "grounding_metadata", None)
         if meta and getattr(meta, "grounding_chunks", None):
             chunks = meta.grounding_chunks
-            for i, ch in enumerate(chunks, start=1):
+
+            seen_urls = set()
+            for ch in chunks:
+                if len(raw_results) >= max_results:
+                    break
+
                 web = getattr(ch, "web", None)
                 if not web:
                     continue
+
                 uri = getattr(web, "uri", None)
                 title = getattr(web, "title", "") or ""
-                if uri:
-                    sources_lines.append(f"[{i}] {title}: {uri}")
-    except Exception as e:  # noqa: BLE001
-        print(f"[Google Search grounding] metadata parse error: {e}")
+                if not uri or uri in seen_urls:
+                    continue
 
-    output_parts: List[str] = []
-    output_parts.append("[GOOGLE_SEARCH]")
-    output_parts.append(f"model: {model} (grounded by Google Search)\n")
-    output_parts.append("ANSWER:\n")
-    output_parts.append(text.strip())
+                seen_urls.add(uri)
 
-    if sources_lines:
-        output_parts.append("\n\nSources:")
-        output_parts.append("\n".join(sources_lines))
+                try:
+                    clean_text, final_url = fetch_clean_content(uri)
+                except Exception:
+                    clean_text = (
+                        "❌ [scraping_error] Failed to scrape this URL.\n"
+                        + traceback.format_exc()
+                    )
+                    final_url = uri
 
-    return "\n".join(output_parts)
+                raw_results[final_url] = {
+                    "title": title,
+                    "content": clean_text,
+                }
+
+    except Exception as e:
+        return (
+            "[GOOGLE_SEARCH]\n"
+            "ERROR: Failed to parse grounding metadata.\n"
+            f"Exception: {e}\n"
+        )
+
+    if not raw_results:
+        return (
+            "[GOOGLE_SEARCH]\n"
+            "RESULTS:\n"
+            "No grounded web URLs were returned by Google Search.\n"
+        )
+
+    summarized = summarize_results_map(raw_results)
+
+    header = (
+        "[GOOGLE_SEARCH]\n"
+        f"query: {query}\n"
+    )
+    return format_search_results(summarized, header=header)
+
+
 
 
 @tool(parse_docstring=True)
@@ -575,19 +633,33 @@ def google_search_grounded(
     question: str,
 ) -> str:
     """
-    Use Gemini with Google Search grounding to answer a question.
+    Google Search Grounding based web search tool.
 
     This tool:
-    - Sends the user's question to a Gemini model with the Google Search tool enabled.
-    - Lets the model decide which web searches to run.
-    - Returns a grounded answer text plus a list of web sources, if available.
+    - Sends the user's natural-language question to the Google Search Grounding tool enabled.
+    - Lets LLM decide which web searches to run and which URLs are relevant.
+    - Scrapes each grounded URL with Playwright, summarizes the main content
+      using the Upstage Solar summarization model, and returns a formatted
+      list of summarized sources.
+
+    The output format is aligned with Tavily and Naver search tools and looks like:
+
+        [GOOGLE_SEARCH]
+        query: <original question>
+
+        Search results:
+
+        --- SOURCE 1: <title> ---
+        URL: <url>
+        SUMMARY:
+        <summary>...</summary>
+        <key_excerpts>...</key_excerpts>
 
     Args:
-        question: The user's natural language question.
+        question: The user's natural-language question.
 
     Returns:
-        A string that starts with "[GOOGLE_SEARCH]" and contains:
-        - the grounded answer text, and
-        - a "Sources" section listing the URLs used as evidence.
+        A formatted string that starts with "[GOOGLE_SEARCH]" and contains
+        summarized search results with titles, URLs, and structured summaries.
     """
     return google_grounded_backend(question)
