@@ -1,18 +1,14 @@
+# impact_evidence_faithfulness.py
 import os
-import asyncio
 from typing import Any, Dict, List, Literal, Optional
 
 from typing_extensions import TypedDict
 from pydantic import BaseModel, Field
 
 from langchain_core.prompts import ChatPromptTemplate
-from langgraph.graph import StateGraph, END
-
-from eval_tools import URLScraper
 from langchain_google_genai import ChatGoogleGenerativeAI
 from dotenv import load_dotenv
 from eval_prompt import impact_citation
-
 
 load_dotenv()
 API_KEY = os.getenv("GOOGLE_API_KEY")
@@ -23,7 +19,6 @@ llm = ChatGoogleGenerativeAI(
     temperature=0.0,
     convert_system_message_to_human=True,
 )
-
 
 LabelType = Literal[
     "SUPPORTED",
@@ -44,48 +39,32 @@ ErrorType = Literal[
 
 
 class ImpactEvidenceResult(BaseModel):
-    """Structured output for impact evidence faithfulness on a single page."""
+    """Structured output for impact evidence faithfulness on a single chain (multi-source)."""
 
-    label: LabelType = Field(..., description="Impact evidence faithfulness label")
+    label: LabelType = Field(..., description="Impact evidence faithfulness label.")
     score: float = Field(
         ...,
         ge=0.0,
         le=1.0,
-        description="Confidence score between 0.0 and 1.0",
+        description="Confidence score between 0.0 and 1.0.",
     )
     reasoning: str = Field(
         ...,
-        description="Short explanation of how the impact description and source text were compared",
+        description="Short explanation of how the impact description and sources were compared.",
     )
     evidence_spans: List[str] = Field(
         default_factory=list,
-        description="Short spans from source_text that support or contradict the impact description",
+        description="Short spans from sources that support or contradict the impact description.",
     )
     error_type: ErrorType = Field(
         "NONE",
-        description="Page loading or content error type",
+        description="Page loading or content error type.",
     )
-
-
-class PerURLImpactEval(BaseModel):
-    """Evaluation result for a single evidence URL."""
-
-    url: str
-    source_title: Optional[str] = None
-    http_status: Optional[int] = None
-    ok: bool = False
-
-    label: LabelType
-    score: float
-    reasoning: str
-    evidence_spans: List[str]
-    error_type: ErrorType
 
 
 class EvidenceItem(TypedDict):
     source_title: str
     url: str
-
 
 
 class ImpactEvidenceState(TypedDict, total=False):
@@ -94,78 +73,63 @@ class ImpactEvidenceState(TypedDict, total=False):
     influence chain segment with multiple evidence URLs.
     """
 
-    # Optional high-level context
     politician: Optional[str]
     policy: Optional[str]
     question: Optional[str]
 
-    # Core impact metadata
     industry_or_sector: str
     companies: List[str]
     impact_description: str
 
-    # Evidence list from influence report
     evidence: List[EvidenceItem]
-
-    # Scraped pages (URLScraper results)
     scraped_pages: List[Dict[str, Any]]
 
-    # LLM evaluation output (per URL)
-    impact_results: List[PerURLImpactEval]
+    impact_result: ImpactEvidenceResult
 
 
 impact_evidence_prompt = ChatPromptTemplate.from_template(impact_citation)
-
 structured_llm = llm.with_structured_output(ImpactEvidenceResult, strict=True)
 impact_chain = impact_evidence_prompt | structured_llm
 
 
-async def _evaluate_single_url(
-    chain,
-    industry_or_sector: str,
-    companies: List[str],
-    impact_description: str,
-    source_title: str,
-    url: str,
-    source_text: str,
-    question: str,
-    http_status: Optional[int],
-    ok: bool,
-) -> PerURLImpactEval:
+def _build_sources_block(
+    evidence: List[EvidenceItem],
+    scraped_pages: List[Dict[str, Any]],
+    max_text_chars: int = 4000,
+) -> str:
     """
-    Run impact_evidence faithfulness prompt + structured output for a single URL.
+    여러 evidence URL과 스크랩된 페이지들을 하나의 텍스트 블록으로 합치는 헬퍼 함수.
+    프롬프트에서는 이 블록을 한 번에 보고 추론한다.
     """
-    companies_str = ", ".join(companies) if companies else ""
+    lines: List[str] = []
+    for idx, (ev, page) in enumerate(zip(evidence, scraped_pages), start=1):
+        url = ev["url"]
+        title = ev.get("source_title") or page.get("title") or ""
+        status = page.get("status")
+        ok = page.get("ok")
+        text = (page.get("text") or "")[:max_text_chars]
 
-    result: ImpactEvidenceResult = await chain.ainvoke(
-        {
-            "industry_or_sector": industry_or_sector,
-            "companies": companies_str,
-            "impact_description": impact_description,
-            "source_title": source_title,
-            "url": url,
-            "source_text": source_text,
-            "question": question,
-        }
-    )
+        lines.append(f"SOURCE {idx}:")
+        lines.append(f"url: {url}")
+        if title:
+            lines.append(f"title: {title}")
+        if status is not None:
+            lines.append(f"http_status: {status}")
+        if ok is not None:
+            lines.append(f"ok: {ok}")
+        lines.append("text:")
+        lines.append(text)
+        lines.append("")  # 빈 줄로 구분
 
-    return PerURLImpactEval(
-        url=url,
-        source_title=source_title or None,
-        http_status=http_status,
-        ok=ok,
-        label=result.label,
-        score=result.score,
-        reasoning=result.reasoning,
-        evidence_spans=result.evidence_spans,
-        error_type=result.error_type,
-    )
+    return "\n".join(lines)
 
 
 async def evaluate_impact_node(state: ImpactEvidenceState) -> ImpactEvidenceState:
     """
-    For each evidence URL and its scraped text, call the LLM judge
-    and compute impact evidence faithfulness for the given influence chain.
+    For a single influence chain:
+    - Take all evidence URLs + scraped pages
+    - Build one multi-source block
+    - Call the LLM once to judge impact faithfulness for the entire chain.
     """
 
     evidence = state.get("evidence", [])
@@ -176,37 +140,29 @@ async def evaluate_impact_node(state: ImpactEvidenceState) -> ImpactEvidenceStat
     impact_description = state["impact_description"]
     question = state.get("question", "") or ""
 
-    results: List[PerURLImpactEval] = []
-    tasks = []
-
-    # Evidence and scraped_pages are assumed to have the same order
-    for ev, page in zip(evidence, scraped_pages):
-        source_title = ev.get("source_title") or page.get("title") or ""
-        url = ev["url"]
-        source_text = page.get("text", "") or ""
-        http_status = page.get("status")
-        ok = bool(page.get("ok"))
-
-        tasks.append(
-            _evaluate_single_url(
-                chain=impact_chain,
-                industry_or_sector=industry_or_sector,
-                companies=companies,
-                impact_description=impact_description,
-                source_title=source_title,
-                url=url,
-                source_text=source_text,
-                question=question,
-                http_status=http_status,
-                ok=ok,
-            )
+    if not evidence or not scraped_pages:
+        result = ImpactEvidenceResult(
+            label="NOT_ENOUGH_INFO",
+            score=0.0,
+            reasoning="No usable evidence sources were available for this influence chain.",
+            evidence_spans=[],
+            error_type="TOO_SHORT",
         )
+        return {"impact_result": result}
 
-    if tasks:
-        per_url_results = await asyncio.gather(*tasks)
-        results.extend(per_url_results)
+    sources_block = _build_sources_block(evidence, scraped_pages)
+    companies_str = ", ".join(companies) if companies else ""
+
+    result: ImpactEvidenceResult = await impact_chain.ainvoke(
+        {
+            "industry_or_sector": industry_or_sector,
+            "companies": companies_str,
+            "impact_description": impact_description,
+            "sources": sources_block,
+            "question": question,
+        }
+    )
 
     return {
-        "impact_results": results,
+        "impact_result": result,
     }
-

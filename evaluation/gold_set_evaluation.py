@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import os
 from typing import Any, Dict, List, Optional
 
@@ -11,18 +13,18 @@ from dotenv import load_dotenv
 
 from impact_evidence_faithfulness import (
     EvidenceItem,
+    PerURLImpactEval,
     ImpactEvidenceState,
-    ImpactEvidenceResult,
     evaluate_impact_node,
 )
 from policy_attribution_consistency import (
+    PerURLPolicyAttributionEval,
     PolicyAttributionState,
-    PolicyAttributionResult,
     evaluate_policy_attribution_node,
 )
-
 from eval_tools import URLScraper
-from eval_prompt import gold_compare
+from eval_prompt.gold_compare import gold_compare
+
 
 
 class CombinedEvalState(TypedDict, total=False):
@@ -51,17 +53,21 @@ class CombinedEvalState(TypedDict, total=False):
     scraped_pages: List[Dict[str, Any]]
 
     # Metric-specific outputs
-    impact_result: ImpactEvidenceResult
-    attribution_result: PolicyAttributionResult
-
+    impact_results: List[PerURLImpactEval]
+    attribution_results: List[PerURLPolicyAttributionEval]
 
     # Gold vs model report comparison
     gold_report: Optional[Dict[str, Any]]
     model_report: Optional[Dict[str, Any]]
     gold_eval: Optional[Dict[str, Any]]
 
+    # Final combined summary object
     combined_summary: Dict[str, Any]
 
+
+# =========================
+# URL Scraping Node
+# =========================
 
 async def scrape_urls_node(state: Dict[str, Any]) -> Dict[str, Any]:
     """
@@ -84,6 +90,7 @@ async def scrape_urls_node(state: Dict[str, Any]) -> Dict[str, Any]:
     results = await scraper.fetch_many(urls, concurrency=3)
 
     return {
+        **state,
         "scraped_pages": results,
     }
 
@@ -148,12 +155,7 @@ async def evaluate_gold_node(state: CombinedEvalState) -> CombinedEvalState:
     gold_report = state.get("gold_report")
     model_report = state.get("model_report")
 
-    print([f"[DEBUG] evaluate_gold_node: question={question}"])
-    print([f"[DEBUG] evaluate_gold_node: gold_report keys={(gold_report)}"])
-    print([f"[DEBUG] evaluate_gold_node: model_report keys={(model_report)}"])
-
     if gold_report is None or model_report is None:
-        # Nothing to compare; skip this node
         return state
 
     result: GoldCompareResult = await gold_chain.ainvoke(
@@ -169,44 +171,3 @@ async def evaluate_gold_node(state: CombinedEvalState) -> CombinedEvalState:
     }
 
 
-async def combine_node(state: CombinedEvalState) -> CombinedEvalState:
-    """
-    Merge the outputs from:
-    - impact_evidence_faithfulness (per-chain, multi-source)
-    - policy_attribution_consistency (per-chain, multi-source)
-    - gold vs model report comparison
-
-    into a single `combined_summary` object.
-    """
-    combined_summary: Dict[str, Any] = {
-        "impact_result": state.get("impact_result"),
-        "attribution_result": state.get("attribution_result"),
-        "gold_eval": state.get("gold_eval"),
-    }
-
-    return {
-        "combined_summary": combined_summary,
-    }
-
-
-
-workflow = StateGraph(CombinedEvalState)
-workflow.add_node("scrape_urls", scrape_urls_node)
-workflow.add_node("evaluate_impact", evaluate_impact_node)
-workflow.add_node("evaluate_policy_attribution", evaluate_policy_attribution_node)
-# workflow.add_node("evaluate_gold", evaluate_gold_node)
-
-workflow.add_node("combine", combine_node)
-
-workflow.set_entry_point("scrape_urls")
-workflow.add_edge("scrape_urls", "evaluate_impact")
-workflow.add_edge("scrape_urls", "evaluate_policy_attribution")
-workflow.add_edge("scrape_urls", "evaluate_gold")
-
-workflow.add_edge("evaluate_impact", "combine")
-workflow.add_edge("evaluate_policy_attribution", "combine")
-workflow.add_edge("evaluate_gold", "combine")
-
-workflow.add_edge("combine", END)
-
-combined_eval_app = workflow.compile()

@@ -1,9 +1,16 @@
-# evaluation/url_scraper.py
 import asyncio
+import re
 from typing import Any, Dict, List, Optional
 
+from bs4 import BeautifulSoup
 from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError
 
+
+DEFAULT_UA = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/120.0.0.0 Safari/537.36"
+)
 
 class URLScraper:
     """
@@ -20,7 +27,7 @@ class URLScraper:
         self,
         headless: bool = True,
         timeout_ms: int = 20_000,
-        wait_until: str = "load",  # "load", "domcontentloaded", "networkidle"
+        wait_until: str = "domcontentloaded",
         max_chars: int = 50_000,
         user_agent: Optional[str] = None,
     ):
@@ -28,7 +35,7 @@ class URLScraper:
         self.timeout_ms = timeout_ms
         self.wait_until = wait_until
         self.max_chars = max_chars
-        self.user_agent = user_agent
+        self.user_agent = user_agent or DEFAULT_UA
 
     async def _create_browser(self):
         playwright = await async_playwright().start()
@@ -46,7 +53,7 @@ class URLScraper:
             "status": Optional[int],   # HTTP status code
             "final_url": Optional[str],
             "title": Optional[str],
-            "text": str,               # document.body.innerText
+            "text": str,               # 정제된 본문 텍스트
             "error": Optional[str],
         }
         """
@@ -63,46 +70,71 @@ class URLScraper:
             playwright = await async_playwright().start()
             browser = await playwright.chromium.launch(headless=self.headless)
 
-            context_args = {}
-            if self.user_agent:
-                context_args["user_agent"] = self.user_agent
-
-            context = await browser.new_context(**context_args)
+            context = await browser.new_context(user_agent=self.user_agent)
             page = await context.new_page()
 
-            resp = await page.goto(
-                url,
-                wait_until=self.wait_until,
-                timeout=self.timeout_ms,
-            )
+            resp = None
+            try:
+                resp = await page.goto(
+                    url,
+                    wait_until=self.wait_until,
+                    timeout=self.timeout_ms,
+                )
+            except PlaywrightTimeoutError:
+                error = f"Timeout after {self.timeout_ms} ms"
+            except Exception as e:
+                error = f"{type(e).__name__}: {e}"
 
             if resp:
                 status = resp.status
                 final_url = resp.url
 
-            # SPA / 동적 로딩을 위해 약간 추가 대기
-            await page.wait_for_timeout(2000)
+            # SPA / 동적 로딩 고려해서 약간 더 대기
+            try:
+                await page.wait_for_load_state("networkidle", timeout=2000)
+            except Exception:
+                pass
 
+            # HTML 가져오기
+            try:
+                html = await page.content()
+            except Exception:
+                html = ""
+
+            if not final_url:
+                try:
+                    final_url = page.url
+                except Exception:
+                    final_url = url
+
+            soup = BeautifulSoup(html, "html.parser")
+
+            # 비콘텐츠 영역 제거
+            for tag in soup(
+                ["script", "style", "header", "footer", "nav", "aside", "form", "iframe"]
+            ):
+                tag.decompose()
+
+            main_content = soup.body
+            target_soup = main_content if main_content else soup
+
+            clean_text = target_soup.get_text(separator=" ", strip=True)
+            clean_text = re.sub(r"\s+", " ", clean_text)
+
+            # 로그인 페이지 처리 (대략적인 heuristic)
+            if "로그인" in clean_text and "해주세요" in clean_text:
+                text = "🔒 [접근 제한] 로그인 필요한 페이지입니다."
+            else:
+                text = clean_text[: self.max_chars]
+
+            # title 추출
             try:
                 title = await page.title()
             except Exception:
                 title = None
 
-            # body의 텍스트 추출
-            try:
-                text = await page.evaluate("() => document.body.innerText || ''")
-            except Exception:
-                text = ""
-
-            if len(text) > self.max_chars:
-                text = text[: self.max_chars]
-
             await context.close()
 
-        except PlaywrightTimeoutError:
-            error = f"Timeout after {self.timeout_ms} ms"
-        except Exception as e:
-            error = f"{type(e).__name__}: {e}"
         finally:
             if browser is not None:
                 await browser.close()
