@@ -13,14 +13,12 @@ from dotenv import load_dotenv
 
 from impact_evidence_faithfulness import (
     EvidenceItem,
-    PerURLImpactEval,
     ImpactEvidenceState,
-    evaluate_impact_node,
+    ImpactEvidenceResult,
 )
 from policy_attribution_consistency import (
-    PerURLPolicyAttributionEval,
     PolicyAttributionState,
-    evaluate_policy_attribution_node,
+    PolicyAttributionResult,
 )
 from eval_tools import URLScraper
 from eval_prompt.gold_compare import gold_compare
@@ -36,68 +34,28 @@ class CombinedEvalState(TypedDict, total=False):
     for a single influence chain or report.
     """
 
-    # High-level context
     politician: Optional[str]
     policy: Optional[str]
     question: Optional[str]
 
-    # Chain-level metadata (for per-chain evaluation)
     industry_or_sector: str
     companies: List[str]
     impact_description: str
 
-    # Evidence list from the model's influence report
     evidence: List[EvidenceItem]
 
-    # Scraped pages for all evidence URLs
     scraped_pages: List[Dict[str, Any]]
 
-    # Metric-specific outputs
-    impact_results: List[PerURLImpactEval]
-    attribution_results: List[PerURLPolicyAttributionEval]
+    impact_result: ImpactEvidenceResult
+    attribution_result: PolicyAttributionResult
 
-    # Gold vs model report comparison
     gold_report: Optional[Dict[str, Any]]
     model_report: Optional[Dict[str, Any]]
     gold_eval: Optional[Dict[str, Any]]
 
-    # Final combined summary object
     combined_summary: Dict[str, Any]
 
 
-# =========================
-# URL Scraping Node
-# =========================
-
-async def scrape_urls_node(state: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Fetch all evidence URLs using Playwright (via URLScraper)
-    and attach the scraped page info to the state as `scraped_pages`.
-    """
-    evidence = state.get("evidence", [])
-    urls = [ev["url"] for ev in evidence]
-
-    scraper = URLScraper(
-        headless=True,
-        timeout_ms=20_000,
-        wait_until="networkidle",
-        max_chars=50_000,
-    )
-
-    if not urls:
-        return {**state, "scraped_pages": []}
-
-    results = await scraper.fetch_many(urls, concurrency=3)
-
-    return {
-        **state,
-        "scraped_pages": results,
-    }
-
-
-# =========================
-# Gold vs Model Report Comparison
-# =========================
 
 load_dotenv()
 API_KEY = os.getenv("GOOGLE_API_KEY")
