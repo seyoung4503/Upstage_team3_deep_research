@@ -83,7 +83,7 @@ workflow = StateGraph(CombinedEvalState)
 workflow.add_node("scrape_urls", scrape_urls_node)
 workflow.add_node("evaluate_impact", evaluate_impact_node)
 workflow.add_node("evaluate_policy_attribution", evaluate_policy_attribution_node)
-# workflow.add_node("evaluate_gold", evaluate_gold_node)
+workflow.add_node("evaluate_gold", evaluate_gold_node)
 
 workflow.add_node("combine", combine_node)
 

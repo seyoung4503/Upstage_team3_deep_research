@@ -21,7 +21,7 @@ from policy_attribution_consistency import (
     PolicyAttributionResult,
 )
 from eval_tools import URLScraper
-from eval_prompt.gold_compare import gold_compare
+from eval_prompt import gold_compare
 
 
 
