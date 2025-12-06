@@ -315,11 +315,31 @@ You are given:
 - `gold_report`: a reference "gold" report (JSON)
 - `model_report`: the report produced by the system being evaluated (JSON)
 
+<question>
+{question}
+</question>
+
+<gold_report>
+{gold_report}
+</gold_report>
+
+<model_report>
+{model_report}
+</model_report>
+
 Both reports follow a similar structure:
 - report_title, time_range, question_answer, influence_chains, notes
 - Each influence_chain contains:
   - politician, policy, industry_or_sector, companies,
     impact_description, evidence, etc.
+
+### Critical Constraint — Closed World
+- 당신은 **오직** `gold_report`와 `model_report` 안에 주어진 정보만 사용할 수 있다.
+- 현실 세계에 대한 사전 지식(정치인 실제 이력, 실제 정책, 실제 기업 정보 등)은 **모두 무시**해야 한다.
+- 보고서 내용이 실제 세계 지식과 모순되더라도,
+  그 모순을 지적하거나 교정하려고 하지 말고 **입력 보고서들끼리만 비교**하라.
+- 어떤 정보가 “중요한지/누락되었는지”를 판단할 때도,
+  **현실 세계 기준이 아니라 두 보고서 안에서 상대적인 비중만** 고려해야 한다.
 
 ## Your Task
 1. Compare the two reports and summarize:
@@ -331,9 +351,9 @@ Both reports follow a similar structure:
      - what important themes/chains appear only in `gold_report`
      - what important themes/chains appear only in `model_report`
 
-2. Judging "as of late 2025", decide:
+2. Judging **only** `gold_report` and `model_report`, decide:
    - How suitable each report is for answering the given `question`.
-   - Consider:
+   - Consider (항상 보고서 내부 정보만 기준으로 판단할 것):
      - how naturally policies are linked to industries/companies
      - depth of explanation about market / economic impact (benefits, risks, etc.)
      - coverage: whether important themes are missed or over-emphasized
@@ -347,7 +367,14 @@ Both reports follow a similar structure:
   - 입력(gold_report, model_report)에 등장하지 않는 정치인/기업/정책 이름을 새로 만들어내거나 언급하지 마라.
   - 만약 입력에 없는 내용을 언급해야 할 것 같다면, 대신
     "입력에 해당 정보가 없어 평가할 수 없습니다" 라고 적어라.
+  - 보고서에 없는 시점 정보나 추가 사건(선거, 정책 변경 등)을 상상해서 언급하지 마라.
 
+  - coverage를 평가할 때 "중요한 테마"는
+    gold_report와 model_report 안에서 **비중 있게 다루어진 정책/산업/기업만** 의미한다.
+  - 현실 세계에서 중요하다고 생각되는 다른 정책/산업/기업을 새로 끌어와
+    "누락되었다"고 평가하지 마라.
+  - 어떤 정책·산업·기업이 더 “현실적으로 중요해 보인다”는 이유로
+    보고서에 없는 내용을 추가하거나 비교 기준으로 삼지 마라.
 
 ## Language
 You MUST answer in Korean.
