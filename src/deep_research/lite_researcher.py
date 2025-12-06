@@ -9,7 +9,7 @@ from langchain_core.messages import HumanMessage
 from langchain_upstage import ChatUpstage
 from langgraph.graph import END, StateGraph
 
-from deep_research.utils import google_search_grounded, get_today_str
+from deep_research.utils import google_search_grounded, get_today_str, naver_search, tavily_search
 from deep_research.prompts import compress_research_system_prompt
 
 load_dotenv()
@@ -29,7 +29,7 @@ class LiteResearchState(TypedDict):
     State for the lightweight research pipeline.
 
     - question: original user question
-    - raw_research: raw string output from google_search_grounded tool
+    - raw_research: raw string output from google_search_grounded, naver_search, tavily_search tool
     - findings: cleaned & compressed findings text that preserves all relevant info
     """
     question: str
@@ -39,12 +39,24 @@ class LiteResearchState(TypedDict):
 
 def lite_gather_node(state: LiteResearchState) -> LiteResearchState:
     """
-    Run google_search_grounded as a single research tool call and store
+    Run google_search_grounded, naver_search, tavily_search as a single research tool call and store
     the raw textual output (answer + sources + snippets).
     """
     question = state["question"]
-    raw_text: str = google_search_grounded.invoke({"question": question})
-    return {"raw_research": raw_text}
+    google_text = google_search_grounded.invoke({"question": question})
+    naver_text = naver_search.invoke({"question": question})
+    tavily_text = tavily_search.invoke({"query": question})
+
+    combined = (
+        "### [GOOGLE_SEARCH]\n"
+        f"{google_text}\n\n"
+        "### [TAVILY_SEARCH]\n"
+        f"{tavily_text}\n\n"
+        "### [NAVER_SEARCH]\n"
+        f"{naver_text}\n"
+    )
+    
+    return {"raw_research": combined}
 
 
 def lite_compress_node(state: LiteResearchState) -> LiteResearchState:

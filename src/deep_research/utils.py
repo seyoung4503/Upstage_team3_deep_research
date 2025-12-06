@@ -29,21 +29,16 @@ NAVER_CLIENT_ID = os.getenv("NAVER_CLIENT_ID")
 NAVER_CLIENT_SECRET = os.getenv("NAVER_CLIENT_SECRET")
 UPSTAGE_API_KEY = os.getenv("UPSTAGE_API_KEY")
 
-# -------------------------------------------------------------------
-# Global clients / models
-# -------------------------------------------------------------------
-
 google_client: Optional[genai.Client] = None
 if GOOGLE_API_KEY:
     google_client = genai.Client(api_key=GOOGLE_API_KEY)
 
-# Upstage models
 summarization_model = ChatUpstage(
     api_key=UPSTAGE_API_KEY,
     model="solar-pro2",
     temperature=0.0,
 )
-# Reuse structured-output model for all summaries
+
 structured_summary_model = summarization_model.with_structured_output(Summary)
 
 query_refiner_model = ChatUpstage(
@@ -54,10 +49,6 @@ query_refiner_model = ChatUpstage(
 
 tavily_client = TavilyClient()
 
-
-# -------------------------------------------------------------------
-# Common utilities / types
-# -------------------------------------------------------------------
 
 class SearchDoc(TypedDict):
     title: str
@@ -145,10 +136,6 @@ def format_search_results(
     return "\n".join(lines)
 
 
-# -------------------------------------------------------------------
-# Tavily backend + tool
-# -------------------------------------------------------------------
-
 def tavily_backend(
     query: str,
     max_results: int = 1,
@@ -206,10 +193,6 @@ def tavily_search(
     return format_search_results(summarized)
 
 
-# -------------------------------------------------------------------
-# Think tool
-# -------------------------------------------------------------------
-
 @tool(parse_docstring=True)
 def think_tool(reflection: str) -> str:
     """
@@ -229,9 +212,6 @@ def think_tool(reflection: str) -> str:
     return f"Reflection recorded: {reflection}"
 
 
-# -------------------------------------------------------------------
-# Naver scraping utilities
-# -------------------------------------------------------------------
 
 def fetch_clean_content(url: str) -> str:
     """
@@ -254,13 +234,12 @@ def fetch_clean_content(url: str) -> str:
 
             try:
                 page.goto(url, timeout=5000, wait_until="domcontentloaded")
-            except Exception:  # noqa: BLE001
-                # Ignore navigation timeout; we still attempt to read content.
+            except Exception: 
                 pass
 
             try:
                 page.wait_for_load_state("networkidle", timeout=2000)
-            except Exception:  # noqa: BLE001
+            except Exception: 
                 pass
 
             target_frame = page
@@ -306,7 +285,7 @@ def fetch_clean_content(url: str) -> str:
 
         return clean_text[:4000], final_url
 
-    except Exception as e:  # noqa: BLE001
+    except Exception as e: 
         return f"❌ 스크래핑 오류: {e}"
 
 
@@ -380,9 +359,6 @@ def deep_search_naver_internal(
     return results_by_url
 
 
-# -------------------------------------------------------------------
-# Naver query set generation (LLM-based)
-# -------------------------------------------------------------------
 
 class KRQuerySet(BaseModel):
     """
@@ -430,9 +406,6 @@ def generate_naver_style_queries(original_question: str) -> KRQuerySet:
     return result
 
 
-# -------------------------------------------------------------------
-# Naver backend + tool
-# -------------------------------------------------------------------
 
 def naver_backend(
     question: str,
@@ -506,9 +479,6 @@ def naver_search(
     return format_search_results(summarized, header=header)
 
 
-# -------------------------------------------------------------------
-# Google Search Grounded backend + tool
-# -------------------------------------------------------------------
 
 def google_grounded_backend(
     query: str,
@@ -624,8 +594,6 @@ def google_grounded_backend(
         f"query: {query}\n"
     )
     return format_search_results(summarized, header=header)
-
-
 
 
 @tool(parse_docstring=True)
